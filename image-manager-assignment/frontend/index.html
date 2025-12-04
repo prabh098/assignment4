@@ -1,0 +1,129 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Image Manager (React)</title>
+    <style>
+      body { font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; margin: 24px; }
+      .card { border: 1px solid #ddd; border-radius: 12px; padding: 16px; margin-bottom: 16px; }
+      label { display: block; margin: 8px 0 4px; }
+      input[type=text], input[type=file] { width: 100%; padding: 8px; }
+      button { padding: 8px 12px; border-radius: 8px; border: 1px solid #ccc; cursor: pointer; }
+      img { max-width: 100%; border-radius: 12px; border: 1px solid #eee; }
+      .row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+      .success { color: #0a7a2e; }
+      .error { color: #b00020; }
+    </style>
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    <script crossorigin src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  </head>
+  <body>
+    <h1>Image Manager</h1>
+    <p>Backend must be running at <code>http://localhost:3000</code>.</p>
+
+    <div id="root"></div>
+
+    <script type="text/babel">
+      const API_BASE = "http://localhost:3000";
+
+      function SearchCard() {
+        const [name, setName] = React.useState("tom");
+        const [filename, setFilename] = React.useState(null);
+        const [error, setError] = React.useState(null);
+
+        const onSearch = async () => {
+          setError(null);
+          setFilename(null);
+          try {
+            const res = await fetch(`${API_BASE}/api/getImage?name=${encodeURIComponent(name)}`);
+            const data = await res.json();
+            if (!res.ok) {
+              setError(data.error || "Failed to fetch");
+            } else {
+              setFilename(data.filename);
+            }
+          } catch (e) {
+            setError("Network error");
+          }
+        };
+
+        return (
+          <div className="card">
+            <h2>1) Search by name</h2>
+            <label>Character name (e.g., tom, jerry, dog)</label>
+            <input type="text" value={name} onChange={(e) => setName(e.target.value)} />
+            <div style={{ marginTop: 8 }}>
+              <button onClick={onSearch}>Search</button>
+            </div>
+            {error && <p className="error" style={{marginTop: 12}}>{error}</p>}
+            {filename && (
+              <div style={{marginTop: 12}}>
+                <img src={`${API_BASE}/${filename}?t=${Date.now()}`} alt={filename} />
+              </div>
+            )}
+          </div>
+        );
+      }
+
+      function UploadCard() {
+        const [name, setName] = React.useState("tom");
+        const [file, setFile] = React.useState(null);
+        const [message, setMessage] = React.useState(null);
+        const [error, setError] = React.useState(null);
+
+        const onUpload = async () => {
+          setMessage(null);
+          setError(null);
+          if (!file) { setError("Please choose a file first."); return; }
+          const formData = new FormData();
+          formData.append("file", file);
+          try {
+            const res = await fetch(`${API_BASE}/api/upload?name=${encodeURIComponent(name)}`, {
+              method: "POST",
+              body: formData
+            });
+            const data = await res.json();
+            if (!res.ok) {
+              setError(data.error || "Upload failed");
+            } else {
+              setMessage(`Upload OK: ${data.filename}`);
+            }
+          } catch (e) {
+            setError("Network error");
+          }
+        };
+
+        return (
+          <div className="card">
+            <h2>2) Upload & replace image</h2>
+            <label>Character name for this image</label>
+            <input type="text" value={name} onChange={(e) => setName(e.target.value)} />
+
+            <label style={{marginTop: 8}}>Choose image (.jpg recommended)</label>
+            <input type="file" accept="image/jpeg,image/jpg,image/png" onChange={(e) => setFile(e.target.files?.[0] || null)} />
+
+            <div style={{ marginTop: 8 }}>
+              <button onClick={onUpload}>Upload</button>
+            </div>
+
+            {message && <p className="success" style={{marginTop: 12}}>{message}</p>}
+            {error && <p className="error" style={{marginTop: 12}}>{error}</p>}
+          </div>
+        );
+      }
+
+      function App() {
+        return (
+          <div className="row">
+            <SearchCard />
+            <UploadCard />
+          </div>
+        );
+      }
+
+      ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+    </script>
+  </body>
+</html>
