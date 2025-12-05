@@ -7,20 +7,28 @@ import fs from 'fs';
 const app = express();
 const PORT = 3000;
 
-// Enable CORS for local dev with a Vite/React or static frontend
+// Enable CORS for local dev
 app.use(cors());
 app.use(express.json());
 
-// Static hosting for images in /public (e.g., http://localhost:3000/tom.jpg)
+// Resolve absolute path to /public and serve it statically
 const publicDir = path.resolve('./public');
+if (!fs.existsSync(publicDir)) {
+  fs.mkdirSync(publicDir, { recursive: true });
+}
 app.use(express.static(publicDir));
 
-// Existing route: returns a filename by query (e.g., ?name=tom => 'tom.jpg')
+/**
+ * PART 1: Search existing image by name
+ * Example: GET /api/getImage?name=tom -> { filename: "tom.jpg" } if present
+ */
 app.get('/api/getImage', (req, res) => {
   const raw = (req.query.name || '').toString().trim().toLowerCase();
   if (!raw) return res.status(400).json({ error: 'Missing ?name=' });
+
   const filename = `${raw}.jpg`;
   const filePath = path.join(publicDir, filename);
+
   if (fs.existsSync(filePath)) {
     return res.json({ filename });
   } else {
@@ -28,25 +36,49 @@ app.get('/api/getImage', (req, res) => {
   }
 });
 
-// Multer setup: store uploads to a temporary folder before renaming
-const upload = multer({ dest: 'uploads/' });
+/**
+ * PART 2: Upload API with Multer 2.x
+ * Accepts a file field named "file" and a query parameter ?name=...
+ * Saves/overwrites /public/<name>.jpg
+ */
+const uploadsDir = path.resolve('./uploads');
+if (!fs.existsSync(uploadsDir)) {
+  fs.mkdirSync(uploadsDir, { recursive: true });
+}
 
-// New route: accepts file and ?name= to overwrite the canonical file inside /public
+// Multer temp storage; files are moved into /public after validation
+const upload = multer({ dest: uploadsDir });
+
 app.post('/api/upload', upload.single('file'), (req, res) => {
-  const raw = (req.query.name || '').toString().trim().toLowerCase();
-  if (!raw) return res.status(400).json({ error: 'Missing ?name=' });
-  if (!req.file) return res.status(400).json({ error: 'Missing file field named "file"' });
-
-  // Enforce .jpg extension per assignment examples (tom.jpg, jerry.jpg, dog.jpg)
-  const destFilename = `${raw}.jpg`;
-  const destPath = path.join(publicDir, destFilename);
-
   try {
-    // Replace (move) uploaded file into /public with the canonical name, overwriting if exists
+    const raw = (req.query.name || '').toString().trim().toLowerCase();
+    if (!raw) {
+      // Clean up temp file if it exists
+      if (req.file?.path && fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
+      return res.status(400).json({ error: 'Missing ?name=' });
+    }
+    if (!req.file) {
+      return res.status(400).json({ error: 'Missing file field named "file"' });
+    }
+
+    // We standardize on .jpg filenames per assignment
+    const destFilename = `${raw}.jpg`;
+    const destPath = path.join(publicDir, destFilename);
+
+    // Move/overwrite the uploaded file into /public
     fs.renameSync(req.file.path, destPath);
-    return res.json({ ok: true, filename: destFilename, message: `Saved ${destFilename} to /public` });
+
+    return res.json({
+      ok: true,
+      filename: destFilename,
+      message: `Saved ${destFilename} to /public`
+    });
   } catch (e) {
-    console.error(e);
+    console.error('[upload] error:', e);
+    // Attempt cleanup of temp file
+    if (req.file?.path && fs.existsSync(req.file.path)) {
+      try { fs.unlinkSync(req.file.path); } catch {}
+    }
     return res.status(500).json({ error: 'Failed to save file' });
   }
 });
